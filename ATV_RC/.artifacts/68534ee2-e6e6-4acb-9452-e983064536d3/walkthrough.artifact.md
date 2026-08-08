@@ -1,21 +1,28 @@
-# Walkthrough - ATV Remote Control (High-Frequency Transmission)
+# Walkthrough - ATV Remote Control (Optimized Transmission)
 
-I have updated the app to send control packets at a constant 10ms interval (100 Hz).
+I have refactored the transmission logic to separate critical drive signals from state changes, improving network efficiency and control responsiveness.
 
 ## Changes Made
 
-### 1. 10ms Periodic Transmission Loop
+### 1. Drive Signal Stream (Heartbeat)
 - **File**: [MainActivity.kt](file:///C:/Users/Tural Gasimov/Desktop/repos/AzSimX/ATV_stack/ATV_RC/app/src/main/java/com/example/atv_rc/MainActivity.kt)
-- **Implementation**: Switched from event-driven transmission to a `ScheduledExecutorService` running at `100Hz`.
-- **Thread Safety**: All state variables (`motorOn`, `direction`, `isReady`, `currentX`, `mappedY`) are now `@Volatile` to ensure the background transmission thread always uses the most recent input values.
-- **Efficiency**:
-    - Pre-resolves the `InetAddress` to avoid DNS overhead every 10ms.
-    - Uses a single persistent thread rather than spawning new threads for each packet.
+- **Key Update**: The joystick Y-axis is now labeled as `hbtt` in the JSON payload.
+- **Frequency**: The app sends a stream of `{"x": float, "hbtt": int}` packets every **10ms** (100Hz).
+- **Safety Interlock**: If the motor is OFF or the system is LOCKED, the loop automatically sends neutral values (`x: 0.0, hbtt: 0`) to ensure safety.
 
-### 2. Control Flow Optimization
-- Removed the manual `sendData()` calls from input handlers. This decoupling ensures the Jetson receives a steady heartbeat signal regardless of how many times the joystick is moved or buttons are pressed.
+### 2. Event-Driven State Updates
+- **Description**: Non-analog states are now sent **only when they change** to reduce redundant network traffic.
+- **Payload**: `{"motor_on": int, "direction": string, "ready": boolean}`.
+- **Trigger**: Sent immediately when:
+    - The motor latch (Z) is engaged/disengaged.
+    - The gear (L1) is shifted between D and R.
+    - The safety toggle (A) is clicked.
+
+### 3. Logic & Stability Fixes
+- **Fixed Typo**: Corrected a code error where the neutral value was incorrectly initialized.
+- **Transmission Precision**: Switched to `scheduleAtFixedRate` for the 10ms loop to ensure a consistent 100Hz frequency without drift.
 
 ## Verification
-1.  **Network Throughput**: You should now see a constant stream of UDP packets (100 per second) targeting `10.121.0.158:5005`.
-2.  **Responsiveness**: Movement and button states should feel smoother and more "real-time" on the hardware side due to the consistent heartbeat.
-3.  **Stability**: The UI remains responsive while the background thread handles the timing-critical network task.
+1.  **Joystick Response**: Verify that `hbtt` scales from `0-4095` when pushing forward and is streamed constantly.
+2.  **State Latency**: Verify that gear changes and safety toggles are received immediately by the Jetson as soon as the button is pressed.
+3.  **Safety**: Verify that releasing the motor latch immediately forces the `hbtt` stream to 0 and sends a `motor_on: 0` state packet.
