@@ -6,9 +6,9 @@ import os
 import socket
 import json
 
-BAUD_RATE = 38400  # Matches Qt configuration
+BAUD_RATE = 38400  # Matches Qt configuration[cite: 3]
 UDP_IP = "0.0.0.0" 
-UDP_PORT = 5005    
+UDP_PORT = 5005    # Matches Android app[cite: 1]
 
 def calculate_modbus_crc(data: bytes) -> int:
     crc = 0xFFFF
@@ -35,6 +35,7 @@ def find_stm32_port():
     return None
 
 def build_short_message(ccw=1, ang=0, rpm=0):
+    """Short message: Steering (ANG) and Motor Motion (CCW)[cite: 2]"""
     json_str = f'{{"MSGshort":1,"CCW":{ccw},"ANG":{ang},"RPM":{rpm}}}'
     data_bytes = json_str.encode('utf-8')
     crc = calculate_modbus_crc(data_bytes)
@@ -45,6 +46,7 @@ def build_short_message(ccw=1, ang=0, rpm=0):
 
 def build_long_message(log=1, print_last_log=0, sys_pwdn=0, motor_pwdn=0, 
                        pbtt_states=[0]*10, hbtt=0):
+    """Long message: Throttle (HBTT) and System Configuration[cite: 2]"""
     if len(pbtt_states) != 10:
         pbtt_states = [0] * 10
 
@@ -101,7 +103,7 @@ def main():
             stopbits=serial.STOPBITS_ONE,
             timeout=1
         )
-        print(f"Successfully opened {port_name} at {BAUD_RATE} baud.")
+        print(f"Successfully opened {port_name} at {BAUD_RATE} baud.[cite: 3]")
     except Exception as e:
         print(f"Failed to open port {port_name}: {e}")
         return
@@ -113,23 +115,25 @@ def main():
     sock.bind((UDP_IP, UDP_PORT))
     print(f"Listening for UDP on port {UDP_PORT}...\n")
 
-    cached_state = {
+    # PERMANENT STATE CACHE (Stores button states until an event changes them)
+    cached_button_state = {
         "motor_on": 0,
         "direction": "R",
-        "ready": False,
+        "ready": False
+    }
+
+    # JOYSTICK CACHE
+    cached_joystick = {
         "x": 0.0,
         "hbtt": 0
     }
 
     last_long_send_time = 0.0
-    last_sent_hbtt = None
 
     try:
         while True:
-            # 1. Blocking wait for the first incoming UDP packet
+            # 1. Non-blocking UDP packet fetch to get the freshest frame
             data, addr = sock.recvfrom(1024)
-            
-            # 2. DRAIN UDP BUFFER: Keep pulling non-blocking packets to process ONLY the newest packet
             sock.setblocking(False)
             try:
                 while True:
@@ -139,28 +143,31 @@ def main():
                 pass
             finally:
                 sock.setblocking(True)
-            
+
             try:
                 payload = json.loads(data.decode('utf-8'))
-                
-                button_event = False
+
+                # --- BUTTON EVENT PACKET ---
+                # Only updates button state cache when Android sends a state change
                 if "motor_on" in payload:
-                    cached_state["motor_on"] = payload.get("motor_on", cached_state["motor_on"])
-                    cached_state["direction"] = payload.get("direction", cached_state["direction"])
-                    cached_state["ready"] = payload.get("ready", cached_state["ready"])
-                    button_event = True
+                    cached_button_state["motor_on"] = payload.get("motor_on", cached_button_state["motor_on"])
+                    cached_button_state["direction"] = payload.get("direction", cached_button_state["direction"])
+                    cached_button_state["ready"] = payload.get("ready", cached_button_state["ready"])
+                    print(f"\n[BUTTON EVENT UPDATE] MotorOn:{cached_button_state['motor_on']} | Ready:{cached_button_state['ready']} | Dir:{cached_button_state['direction']}")
 
+                # --- JOYSTICK STREAM PACKET ---
                 if "hbtt" in payload:
-                    cached_state["x"] = payload.get("x", cached_state["x"])
-                    cached_state["hbtt"] = payload.get("hbtt", cached_state["hbtt"])
+                    cached_joystick["x"] = payload.get("x", cached_joystick["x"])
+                    cached_joystick["hbtt"] = payload.get("hbtt", cached_joystick["hbtt"])
 
-                # Extract values
-                motor_on = cached_state["motor_on"]
-                is_ready = cached_state["ready"]
-                direction = cached_state["direction"]
-                x_val = cached_state["x"]
-                hbtt = cached_state["hbtt"]
+                # Extract merged states
+                motor_on = cached_button_state["motor_on"]
+                is_ready = cached_button_state["ready"]
+                direction = cached_button_state["direction"]
+                x_val = cached_joystick["x"]
+                hbtt = cached_joystick["hbtt"]
 
+                # Logic mapping[cite: 1, 2]
                 if motor_on == 0 or not is_ready:
                     ccw = 0  # Stop
                     rpm = 0
@@ -172,30 +179,25 @@ def main():
 
                 ang = int(((x_val + 1.0) / 2.0) * 360)
 
-                # Send Short Message (Steering & Motion)
+                # 1. Send Short Message every cycle (Steering ANG + Motion CCW)[cite: 2]
                 short_packet = build_short_message(ccw=ccw, ang=ang, rpm=rpm)
                 ser.write(short_packet)
 
-                # Rate-limit Long Message to max 10 Hz (100 ms) OR immediate on button press
+                # 2. Send Long Message every ~50ms (Transmits HBTT while keeping cached button states fixed)[cite: 2, 5]
                 now = time.time()
-                should_send_long = button_event or (
-                    (now - last_long_send_time > 0.1) and (hbtt != last_sent_hbtt)
-                )
-
-                if should_send_long:
+                if (now - last_long_send_time) >= 0.05:
                     long_packet = build_long_message(
                         log=1, print_last_log=0, 
                         sys_pwdn=0, motor_pwdn=motor_pwdn, 
                         pbtt_states=[0]*10, hbtt=hbtt
                     )
                     ser.write(long_packet)
-                    last_sent_hbtt = hbtt
                     last_long_send_time = now
 
-                # Real-time live status monitor on Python console
+                # Real-time console status
                 print(
-                    f"\r[LIVE TX] Motor:{motor_on} | Ready:{is_ready} | Dir:{direction} | "
-                    f"ANG:{ang}° | HBTT:{hbtt}  ", 
+                    f"\r[TX TO STM32] Motor:{motor_on} | Ready:{is_ready} | Dir:{direction} | "
+                    f"ANG:{ang}° | HBTT:{hbtt} (Target Volt: {(hbtt/4095.0)*4.55:.2f}V)   ", 
                     end="", 
                     flush=True
                 )
