@@ -1,28 +1,38 @@
-# Walkthrough - ATV Remote Control (Optimized Transmission)
+# Walkthrough - ATV Remote Control (Custom JSON & Gear Mapping)
 
-I have refactored the transmission logic to separate critical drive signals from state changes, improving network efficiency and control responsiveness.
+I have updated the transmission format to match your specific JSON requirements and implemented the hardware-level gear mapping.
 
 ## Changes Made
 
-### 1. Drive Signal Stream (Heartbeat)
+### 1. New JSON Structure
 - **File**: [MainActivity.kt](file:///C:/Users/Tural Gasimov/Desktop/repos/AzSimX/ATV_stack/ATV_RC/app/src/main/java/com/example/atv_rc/MainActivity.kt)
-- **Key Update**: The joystick Y-axis is now labeled as `hbtt` in the JSON payload.
-- **Frequency**: The app sends a stream of `{"x": float, "hbtt": int}` packets every **10ms** (100Hz).
-- **Safety Interlock**: If the motor is OFF or the system is LOCKED, the loop automatically sends neutral values (`x: 0.0, hbtt: 0`) to ensure safety.
+- **Format**: All packets now follow the provided template:
+  ```json
+  {
+      "MSGshort": 0,
+      "LOG": 1,
+      "PrintLastLog": 1,
+      "SysPWDN": 0,
+      "MotorPWDN": 0,
+      "PBTT0": 0,
+      "PBTT1": 0,
+      ...
+      "HBTT": 350
+  }
+  ```
+- **Motor Logic**: `MotorPWDN` is set to `0` when the motor is engaged (Latch Down) and `1` (Power Down) when released.
 
-### 2. Event-Driven State Updates
-- **Description**: Non-analog states are now sent **only when they change** to reduce redundant network traffic.
-- **Payload**: `{"motor_on": int, "direction": string, "ready": boolean}`.
-- **Trigger**: Sent immediately when:
-    - The motor latch (Z) is engaged/disengaged.
-    - The gear (L1) is shifted between D and R.
-    - The safety toggle (A) is clicked.
+### 2. Gear Direction Mapping
+- **Drive (D)**: Sets `PBTT1: 1` and `PBTT2: 1`. All other `PBTT` fields are `0`.
+- **Reverse (R)**: Sets `PBTT0: 1` and `PBTT3: 1`. All other `PBTT` fields are `0`.
+- **Latency**: These bits update instantly in the 10ms stream as soon as L1 is pressed or released.
 
-### 3. Logic & Stability Fixes
-- **Fixed Typo**: Corrected a code error where the neutral value was incorrectly initialized.
-- **Transmission Precision**: Switched to `scheduleAtFixedRate` for the 10ms loop to ensure a consistent 100Hz frequency without drift.
+### 3. Safety & Throttling
+- **Analog Throttle**: The `HBTT` key contains the `0-4095` value.
+- **Interlock**: If the system is LOCKED or the motor is OFF, `HBTT` is forced to `0` for safety.
 
 ## Verification
-1.  **Joystick Response**: Verify that `hbtt` scales from `0-4095` when pushing forward and is streamed constantly.
-2.  **State Latency**: Verify that gear changes and safety toggles are received immediately by the Jetson as soon as the button is pressed.
-3.  **Safety**: Verify that releasing the motor latch immediately forces the `hbtt` stream to 0 and sends a `motor_on: 0` state packet.
+1.  **D-Gear Check**: Hold L1. Verify the UDP packet shows `PBTT1: 1` and `PBTT2: 1`.
+2.  **R-Gear Check**: Release L1. Verify the UDP packet shows `PBTT0: 1` and `PBTT3: 1`.
+3.  **Power Down**: Release the Z latch. Verify `MotorPWDN: 1` and `HBTT: 0`.
+4.  **Heartbeat**: Verify the full JSON block is sent every 10ms.

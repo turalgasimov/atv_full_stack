@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
                 jetsonAddress = InetAddress.getByName(jetsonIp)
                 
                 // Send initial state
-                sendStateData()
+                sendControlData()
 
                 // Start the 10ms periodic transmission
                 startTransmissionLoop()
@@ -79,7 +79,7 @@ class MainActivity : AppCompatActivity() {
     private fun startTransmissionLoop() {
         executor = Executors.newSingleThreadScheduledExecutor()
         executor?.scheduleWithFixedDelay({
-            sendJoystickData()
+            sendControlData()
         }, 0, 10, TimeUnit.MILLISECONDS)
     }
 
@@ -100,7 +100,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             updateUI()
-            // No longer calling sendData() here; loop handles it
             return true
         }
         return super.onGenericMotionEvent(event)
@@ -114,21 +113,21 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_BUTTON_Z -> { // 101 - Motor Latch
                 if (motorOn != 1) {
                     motorOn = 1
-                    sendStateData()
+                    sendControlData() // Send immediately on change
                 }
                 handled = true
             }
             KeyEvent.KEYCODE_BUTTON_L1 -> { // 102 - Gear Shift
                 if (motorOn == 1 && direction != "D") {
                     direction = "D"
-                    sendStateData()
+                    sendControlData() // Send immediately on change
                     handled = true
                 }
             }
             KeyEvent.KEYCODE_BUTTON_A -> { // 96 - Safety Toggle
                 if (motorOn == 1) {
                     isReady = !isReady
-                    sendStateData()
+                    sendControlData() // Send immediately on change
                     handled = true
                 }
             }
@@ -150,14 +149,14 @@ class MainActivity : AppCompatActivity() {
                     currentX = 0.0f
                     currentY = 0.0f
                     mappedY = 0
-                    sendStateData()
+                    sendControlData() // Send immediately on change
                     handled = true
                 }
             }
             KeyEvent.KEYCODE_BUTTON_L1 -> { // 102 - Return to Reverse
                 if (direction != "R") {
                     direction = "R"
-                    sendStateData()
+                    sendControlData() // Send immediately on change
                     handled = true
                 }
             }
@@ -220,47 +219,49 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendJoystickData() {
+    private fun sendControlData() {
         val address = jetsonAddress ?: return
         val socket = udpSocket ?: return
 
         try {
             val json = JSONObject()
+            
+            // Static values from template
+            json.put("MSGshort", 0)
+            json.put("LOG", 1)
+            json.put("PrintLastLog", 1)
+            json.put("SysPWDN", 0)
+            
+            // Motor Power Down (1 if motor is OFF, 0 if ON)
+            json.put("MotorPWDN", if (motorOn == 1) 0 else 1)
+            
+            // PBTT mapping for direction
+            // Default all PBTT to 0
+            for (i in 0..9) {
+                json.put("PBTT$i", 0)
+            }
+            
+            if (direction == "D") {
+                json.put("PBTT1", 1)
+                json.put("PBTT2", 1)
+            } else if (direction == "R") {
+                json.put("PBTT0", 1)
+                json.put("PBTT3", 1)
+            }
+            
+            // Analog throttle
             // Safety logic: only send real values if motor is on AND system is ready
             if (motorOn == 1 && isReady) {
-                json.put("x", currentX)
-                json.put("hbtt", mappedY)
+                json.put("HBTT", mappedY)
             } else {
-                json.put("x", 0.0)
-                json.put("hbtt", 0)
+                json.put("HBTT", 0)
             }
 
             val message = json.toString().toByteArray()
             val packet = DatagramPacket(message, message.size, address, jetsonPort)
             socket.send(packet)
         } catch (e: Exception) {
-            // UDP transmission error
-            Log.e("UDP", "Error sending joystick data: ${e.message}")
-        }
-    }
-
-    private fun sendStateData() {
-        val address = jetsonAddress ?: return
-        val socket = udpSocket ?: return
-
-        thread {
-            try {
-                val json = JSONObject()
-                json.put("motor_on", motorOn)
-                json.put("direction", direction)
-                json.put("ready", isReady)
-
-                val message = json.toString().toByteArray()
-                val packet = DatagramPacket(message, message.size, address, jetsonPort)
-                socket.send(packet)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            // Log.e("UDP", "Error sending control data: ${e.message}")
         }
     }
 

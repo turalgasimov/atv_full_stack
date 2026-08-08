@@ -30,25 +30,15 @@ def find_stm32_port():
             return port.device
     return "/dev/ttyACM0" if os.path.exists("/dev/ttyACM0") else None
 
-def send_hbtt_immediately(ser, hbtt_value):
-    msg_dict = {
-        "MSGshort": 0,
-        "LOG": 1,
-        "PrintLastLog": 0,
-        "SysPWDN": 0,
-        "MotorPWDN": 0,
-        "PBTT0": 0, "PBTT1": 0, "PBTT2": 0, "PBTT3": 0, "PBTT4": 0,
-        "PBTT5": 0, "PBTT6": 0, "PBTT7": 0, "PBTT8": 0, "PBTT9": 0,
-        "HBTT": int(hbtt_value)
-    }
-
+def send_frame_immediately(ser, msg_dict: dict):
+    # Format directly from incoming Android JSON payload
     json_str = json.dumps(msg_dict, separators=(',', ':'))
     crc = calculate_modbus_crc(json_str.encode('ascii'))
     crc_str = f"{crc & 0xFF:02x}{(crc >> 8) & 0xFF:02x}"
     
     full_msg = f"{json_str}:{crc_str}\r\n"    
     ser.write(full_msg.encode('ascii'))
-    print(f"[TX DIRECT] HBTT: {hbtt_value} | Frame: {full_msg.strip()}")
+    print(f"[TX DIRECT] HBTT: {msg_dict.get('HBTT', 0)} | Frame: {full_msg.strip()}")
 
 def main():
     port_name = find_stm32_port()
@@ -86,15 +76,13 @@ def main():
 
     try:
         while True:
-            # 1. Receive packet
+            # 1. Receive packet from Android
             data, _ = sock.recvfrom(1024)
 
-            # 2. Extract hbtt and send instantly
+            # 2. Forward received payload straight to STM32
             try:
                 payload = json.loads(data.decode('utf-8'))
-                if "hbtt" in payload:
-                    hbtt_val = max(0, min(4095, int(payload["hbtt"])))
-                    send_hbtt_immediately(ser, hbtt_val)
+                send_frame_immediately(ser, payload)
             except (json.JSONDecodeError, ValueError):
                 pass
 

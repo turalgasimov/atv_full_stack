@@ -8,4 +8,6 @@
 - [x] Implement strict control hierarchy (Motor OFF = No controls)
 - [x] Update joystick Y-axis to 0-4095 throttle (neutral = 0)
 - [x] Implement 10ms fixed frequency transmission loop
+- [x] Update JSON format to match Jetson template
+- [x] Implement PBTT direction mapping (D=1,2; R=0,3)
 - [ ] Verify UI and functionality
