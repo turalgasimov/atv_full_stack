@@ -248,6 +248,12 @@ class MainActivity : AppCompatActivity() {
                 json.put("PBTT0", 1)
                 json.put("PBTT3", 1)
             }
+
+            if (motorOn == 1) {
+                json.put("PBTT4", 1) // Motor ON
+            } else {
+                json.put("PBTT4", 0) // Motor OFF
+            }
             
             // Analog throttle
             // Safety logic: only send real values if motor is on AND system is ready
@@ -256,12 +262,18 @@ class MainActivity : AppCompatActivity() {
             } else {
                 json.put("HBTT", 0)
             }
+            
+            if (mappedY > 200) {
+                json.put("PBTT5", 1)
+            } else {
+                json.put("PBTT5", 0)
+            }
 
             val message = json.toString().toByteArray()
             val packet = DatagramPacket(message, message.size, address, jetsonPort)
             socket.send(packet)
         } catch (e: Exception) {
-            // Log.e("UDP", "Error sending control data: ${e.message}")
+            Log.e("UDP", "Error sending control data: ${e.message}")
         }
     }
 
