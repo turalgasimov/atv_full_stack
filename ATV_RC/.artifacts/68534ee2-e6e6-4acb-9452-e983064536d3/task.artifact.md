@@ -1,0 +1,11 @@
+- [x] Update `activity_main.xml` with enhanced UI layout
+- [x] Implement state management and joystick remapping in `MainActivity.kt`
+- [x] Implement button logic (Z, L1, A) in `MainActivity.kt`
+- [x] Update UDP transmission logic to include all states
+- [x] Fix rapid toggling issue (event repeatCount)
+- [x] Redesign UI to "Car-Style" dashboard
+- [x] Refine Motor latch: Down is ON, Up is OFF
+- [x] Implement strict control hierarchy (Motor OFF = No controls)
+- [x] Update joystick Y-axis to 0-4095 throttle (neutral = 0)
+- [x] Implement 10ms fixed frequency transmission loop
+- [ ] Verify UI and functionality

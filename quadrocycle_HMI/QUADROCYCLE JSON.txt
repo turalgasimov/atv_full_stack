@@ -1,0 +1,42 @@
+
+
+	Short Message:
+
+	{
+     MSGshort:1;			//Mandatory for short message
+  	 RPM:100;				//RANGE: 0-120
+  	 ANG:180;				//RANGE: 0-360
+  	 CCW:1					//0,2,3,4,5,6
+	}:CRC					//(hex,4 digit,with zero-padding,for ex:07C3)
+ 
+	CCW values: 
+	
+		STOP 		 = 0,	//urgent STOP!
+		CW   		 = 1,	//rotating clock-wise
+		CCW  		 = 2,	//rotating counter-clockwise
+		CW_BACKHOME  = 3,	//rotating clockwise, then counter-clockwise to its origin
+		CCW_BACKHOME = 4,	//rotating counter-clockwise, then clockwise to its origin
+		HOME		 = 5,	//positioning shaft on home
+		IGNORE       = 6,	//periodic health check query
+ 
+	Long Message:
+	
+	{
+ 	 MSGshort:0;			//mandatory for long message
+ 	 LOG:1;					//0
+ 	 PrintLastLog:1;		//0
+ 	 SysPWDN:0;				//1
+ 	 MotorPWDN:0;			//1
+ 	 PBTT0:0;				//1
+ 	 PBTT1:0;				//1
+	 PBTT2:0;				//1
+	 PBTT3:0;				//1
+	 PBTT4:0;				//1
+	 PBTT5:0;				//1
+	 PBTT6:0;				//1
+	 PBTT7:0;				//1
+	 PBTT8:0;				//1
+ 	 PBTT9:0;				//1;
+ 	 HBTT:350;				//RANGE: 0 - 4095
+ 	}:CRC					//(hex,4 digit,with zero-padding)
+ 
