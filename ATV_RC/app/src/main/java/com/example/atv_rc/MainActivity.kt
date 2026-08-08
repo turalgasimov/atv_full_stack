@@ -2,6 +2,7 @@ package com.example.atv_rc
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -239,6 +240,7 @@ class MainActivity : AppCompatActivity() {
             socket.send(packet)
         } catch (e: Exception) {
             // UDP transmission error
+            Log.e("UDP", "Error sending joystick data: ${e.message}")
         }
     }
 
