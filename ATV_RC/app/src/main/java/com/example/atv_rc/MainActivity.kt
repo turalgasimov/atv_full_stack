@@ -23,7 +23,7 @@ import kotlin.math.abs
 class MainActivity : AppCompatActivity() {
 
     // UPDATE THIS to Jetson's Wi-Fi IP address
-    private val jetsonIp = "10.121.0.158"
+    private val jetsonIp = "172.20.10.2"
     private val jetsonPort = 5005
     private var udpSocket: DatagramSocket? = null
     private var jetsonAddress: InetAddress? = null
@@ -262,7 +262,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 json.put("HBTT", 0)
             }
-            
+
             if (mappedY > 200) {
                 json.put("PBTT5", 1)
             } else {
